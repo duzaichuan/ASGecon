@@ -1,0 +1,1 @@
+A Julia rewrite of Andreas Schaab and Allen T.Zhang's SparseEcon Toolkit https://github.com/schaab-lab/SparseEcon.
