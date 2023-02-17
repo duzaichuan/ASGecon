@@ -1,10 +1,10 @@
 using LinearAlgebra, SparseArrays
 using Combinatorics, NonlinearSolve, LinearSolve
 
-include("grid_setup.jl")
-include("hierarchical_funs.jl")
-include("grid_FD.jl")
-include("grid_adaption.jl")
+include("../lib/grid_setup.jl")
+include("../lib/hierarchical_funs.jl")
+include("../lib/grid_FD.jl")
+include("../lib/grid_adaption.jl")
 
 # Probably can use @view upon matrices slicing to speed up
 #!! when itr is empty in reduce(vcat,[]), errors appear
@@ -264,14 +264,6 @@ function main!(p::Container, u0)
     end
 end
 
-u0 = (0.008, 0.02)
-p = setup_p();
-main!(p, u0) # 22s, still 2.5x slower than original matlab code
-# show(stdout, "text/plain", setdiff(G.G_adapt[4], G.G_adapt[5]))
-
-a = p.G.G_adapt[1][:, p.G.names_dict[:a]]
-z = p.G.G_adapt[1][:, p.G.names_dict[:z]]
-
 ### ITERATION FUNCTIONS
 function stationary!(r, p)
 
@@ -396,3 +388,11 @@ function KF!(hh::Household, G_dense::Grid, pa::Params) # use G_dense, c.f. HJB!
         println("Distribution not normalized!")
     end
 end
+
+u0 = (0.008, 0.02)
+p = setup_p();
+@time main!(p, u0) # 22s, still 2.5x slower than original matlab code
+# show(stdout, "text/plain", setdiff(G.G_adapt[4], G.G_adapt[5]))
+
+a = p.G.G_adapt[1][:, p.G.names_dict[:a]]
+z = p.G.G_adapt[1][:, p.G.names_dict[:z]]
