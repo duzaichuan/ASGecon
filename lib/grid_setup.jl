@@ -11,7 +11,7 @@ mutable struct Grid
     lvl::Matrix{Int64}
     h::Matrix{Float64} # grid distance in levels
     value::Matrix{Float64}
-    dx::Matrix{Float64}
+    dx::Union{Float64, Matrix{Float64}}
     J::Int64 # total numer of points
     sparse::Bool # if J is small, use full matrices
     H_comp::SparseMatrixCSC

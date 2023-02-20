@@ -62,6 +62,7 @@ include("../lib/grid_adaption.jl")
     named_dims::Vector{Int64} = [1, 2]
 end
 
+### SETUP GRID
 function setup_grid(pa::Params; surplus::Vector{Int64}, dense = false)
     if dense == true
         l = 0
@@ -78,57 +79,31 @@ function setup_grid(pa::Params; surplus::Vector{Int64}, dense = false)
     dx = [da dz]
     _, H_comp = gen_H_mat(grid, lvl_grid)
 
-    if isdefined(pa, :discrete_types)
-        DS_boundary_dict = Dict{Symbol, Union{Array, SparseMatrixCSC}}()
-        DSijs_dict = Dict{Symbol, Union{Array, SparseMatrixCSC}}()
-        DS_const_dict = Dict{Symbol, Union{Array, SparseMatrixCSC}}()
-        for i in 1:length(pa.discrete_types)
-            name = pa.discrete_types[i]
-            DS_boundary_dict[Symbol(name, :D1F)] = Vector{SparseMatrixCSC}(undef, pa.d)
-            DS_boundary_dict[Symbol(name, :D1B)] = Vector{SparseMatrixCSC}(undef, pa.d)
-            DS_boundary_dict[Symbol(name, :D1C)] = Vector{SparseMatrixCSC}(undef, pa.d)
-            DS_boundary_dict[Symbol(name, :D2)] = Vector{SparseMatrixCSC}(undef, pa.d)
-            DSijs_dict[Symbol(name, :D1F)] = Vector{Matrix{Float64}}(undef, pa.d)
-            DSijs_dict[Symbol(name, :D1B)] = Vector{Matrix{Float64}}(undef, pa.d)
-            DSijs_dict[Symbol(name, :D1C)] = Vector{Matrix{Float64}}(undef, pa.d)
-            DSijs_dict[Symbol(name, :D2)] = Vector{Matrix{Float64}}(undef, pa.d)
-            DS_const_dict[Symbol(:DCH_, name)] = Vector{SparseMatrixCSC}(undef, pa.d)
-            DS_const_dict[Symbol(name, :D1F)] = Vector{Vector{Float64}}(undef, pa.d)
-            DS_const_dict[Symbol(name, :D1B)] = Vector{Vector{Float64}}(undef, pa.d)
-            DS_const_dict[Symbol(name, :D1C)] = Vector{Vector{Float64}}(undef, pa.d)
-            DS_const_dict[Symbol(name, :D2)] = Vector{Vector{Float64}}(undef, pa.d)
-            DFull_dict[Symbol(name, :D1F)] = Vector{Matrix{Float64}}(undef, pa.d)
-            DFull_dict[Symbol(name, :D1B)] = Vector{Matrix{Float64}}(undef, pa.d)
-            DFull_dict[Symbol(name, :D1C)] = Vector{Matrix{Float64}}(undef, pa.d)
-            DFull_dict[Symbol(name, :D2)] = Vector{Matrix{Float64}}(undef, pa.d)
-        end
-    else
-        DS_boundary_dict = Dict{Symbol, Union{Array, SparseMatrixCSC}}(
-            :MainD1F => Vector{SparseMatrixCSC}(undef, pa.d),
-            :MainD1B => Vector{SparseMatrixCSC}(undef, pa.d),
-            :MainD1C => Vector{SparseMatrixCSC}(undef, pa.d),
-            :MainD2  => Vector{SparseMatrixCSC}(undef, pa.d)
-        )
-        DSijs_dict = Dict{Symbol, Union{Array, SparseMatrixCSC}}(
-            :MainD1F  => Vector{Matrix{Float64}}(undef, pa.d),
-            :MainD1B  => Vector{Matrix{Float64}}(undef, pa.d),
-            :MainD1C  => Vector{Matrix{Float64}}(undef, pa.d),
-            :MainD2   => Vector{Matrix{Float64}}(undef, pa.d)
-        )
-        DS_const_dict = Dict{Symbol, Union{Array, SparseMatrixCSC}}(
-            :DCH_Main  => Vector{SparseMatrixCSC}(undef, pa.d),
-            :MainD1F  => Vector{Vector{Float64}}(undef, pa.d),
-            :MainD1B  => Vector{Vector{Float64}}(undef, pa.d),
-            :MainD1C  => Vector{Vector{Float64}}(undef, pa.d),
-            :MainD2   => Vector{Vector{Float64}}(undef, pa.d)
-        )
-        DFull_dict = Dict{Symbol, Union{Array, SparseMatrixCSC}}(
-            :MainD1F  => Vector{Matrix{Float64}}(undef, pa.d),
-            :MainD1B  => Vector{Matrix{Float64}}(undef, pa.d),
-            :MainD1C  => Vector{Matrix{Float64}}(undef, pa.d),
-            :MainD2   => Vector{Matrix{Float64}}(undef, pa.d)
-        )
-    end
+    DS_boundary_dict = Dict{Symbol, Union{Array, SparseMatrixCSC}}(
+        :MainD1F => Vector{SparseMatrixCSC}(undef, pa.d),
+        :MainD1B => Vector{SparseMatrixCSC}(undef, pa.d),
+        :MainD1C => Vector{SparseMatrixCSC}(undef, pa.d),
+        :MainD2  => Vector{SparseMatrixCSC}(undef, pa.d)
+    )
+    DSijs_dict = Dict{Symbol, Union{Array, SparseMatrixCSC}}(
+        :MainD1F  => Vector{Matrix{Float64}}(undef, pa.d),
+        :MainD1B  => Vector{Matrix{Float64}}(undef, pa.d),
+        :MainD1C  => Vector{Matrix{Float64}}(undef, pa.d),
+        :MainD2   => Vector{Matrix{Float64}}(undef, pa.d)
+    )
+    DS_const_dict = Dict{Symbol, Union{Array, SparseMatrixCSC}}(
+        :DCH_Main  => Vector{SparseMatrixCSC}(undef, pa.d),
+        :MainD1F  => Vector{Vector{Float64}}(undef, pa.d),
+        :MainD1B  => Vector{Vector{Float64}}(undef, pa.d),
+        :MainD1C  => Vector{Vector{Float64}}(undef, pa.d),
+        :MainD2   => Vector{Vector{Float64}}(undef, pa.d)
+    )
+    DFull_dict = Dict{Symbol, Union{Array, SparseMatrixCSC}}(
+        :MainD1F  => Vector{Matrix{Float64}}(undef, pa.d),
+        :MainD1B  => Vector{Matrix{Float64}}(undef, pa.d),
+        :MainD1C  => Vector{Matrix{Float64}}(undef, pa.d),
+        :MainD2   => Vector{Matrix{Float64}}(undef, pa.d)
+    )
 
     G = Grid(
         pa.d,
@@ -216,104 +191,7 @@ function Household(pa::Params)
 end
 
 
-### MAIN SECTION
-mutable struct Container
-    const pa::Params
-    hh::Household
-    G::Grid
-    const G_dense::Grid
-end
-
-function setup_p()
-    pa = Params();
-    hh = Household(pa);
-    # Sparse Grid
-    G = setup_grid(pa, surplus = pa.surplus, dense = false);
-    # Dense grid
-    G_dense = setup_grid(pa, surplus = pa.l_dense, dense = true);
-    # Projection matrix from sparse to dense: this is for KF! and consistent aggregation
-    G.BH_dense = get_projection_matrix(G, G_dense.grid, G_dense.lvl);
-    hh.income = hh.r .* G.value[:, G.names_dict[:a]] .+ hh.w .* G.value[:, G.names_dict[:z]]
-    hh.V = pa.u.(hh.income) ./ pa.ρ # V0
-    return Container(pa, hh, G, G_dense)
-end
-
-function main!(p::Container, u0)
-
-    probN = IntervalNonlinearProblem(stationary!, u0, p)
-
-    for iter = 1:p.pa.max_adapt_iter
-        println(" MainIteration = ", iter)
-        # stationary!(hh, G, G_dense, pa, rmin, rmax)
-        r = solve(probN, Bisection())
-        stationary!(r.u, p)
-        p.hh.V_adapt[iter] = p.hh.V
-        p.G.G_adapt[iter] = p.G.grid
-        adapt_grid!( # generate BH_adapt projection and update grid
-            p.G, p.hh.V,
-            AddRule = :tol, # Expand nodes with hierarchical coefficient greater than 'AddTol'
-            AddTol = 1e-5,
-            KeepTol = 1e-6
-        )
-        if p.G.stats_dict[:n_change] == 0
-            break
-        end
-        # update value function crt. the new grid
-        p.hh.V = p.G.BH_adapt * p.hh.V
-        # update the matrix projection to the dense grid
-        p.G.BH_dense = get_projection_matrix(p.G, p.G_dense.grid, p.G_dense.lvl)
-    end
-end
-
 ### ITERATION FUNCTIONS
-function stationary!(r, p)
-
-    # @assert hh.r < pa.ρ || hh.r > -0.1 "init r is too large or small"
-
-    # for iter = 1:pa.maxit
-        p.hh.income = r .* p.G.value[:, p.G.names_dict[:a]] .+ p.hh.w .* p.G.value[:, p.G.names_dict[:z]]
-        # State-constrained boundary conditions
-        left_bound = p.pa.u1.(p.hh.income)
-        right_bound = p.pa.u1.(p.hh.income)
-        BC = Vector{Dict}(undef, p.G.d)
-        BC[1] = Dict(
-            :lefttype => :VNB, :righttype => :VNF,
-            :leftfn => (x -> sparse_project(p.G, x, left_bound)),
-            :rightfn => (x -> sparse_project(p.G, x, right_bound))
-        )
-        BC[2] = Dict(
-            :lefttype => :zero, :righttype => :zero
-        )
-        gen_FD!(p.G, BC)
-        gen_FD!(p.G_dense, BC) # Note this is not actually necessary for Huggett !! this step is time consuming
-
-        # VALUE FUNCTION ITERATION
-        VFI!(p.hh, p.G, p.pa)
-        # KOLMOGOROV FORWARD
-        p.hh.s_dense = p.G.BH_dense * p.hh.spol
-        KF!(p.hh, p.G_dense, p.pa)
-        # MARKET CLEARING
-        a = p.G_dense.value[:, p.G.names_dict[:a]]
-        B = sum(a .* p.hh.g .* p.G_dense.dx[1] .* p.G_dense.dx[2])
-        # hh.ssS = sum(G.BH_dense * hh.spol .* hh.g .* da)
-
-        # # UPDATE INTEREST RATE
-        # if hh.B > pa.crit
-        #     # println("Excess Supply")
-        #     rmax = copy(hh.r)
-        #     hh.r = 0.5*hh.r + 0.5*rmin
-        # elseif hh.B < -pa.crit
-        #     # println("Excess Demand")
-        #     rmin = copy(hh.r)
-        #     hh.r = 0.5*hh.r + 0.5*rmax
-        # elseif abs(hh.B) < pa.crit
-        #     println("Equilibrium Found, Interest rate =", hh.r)
-        #     break
-        # end
-    # end
-    return B
-end
-
 function VFI!(hh::Household, G::Grid, pa::Params)
 
     Az, const_z = FD_operator(G, μ = pa.θz .* (pa.zmean .- G.value[:, G.names_dict[:z]]), σ = pa.σz * ones(G.J), dims = 2)
@@ -387,6 +265,104 @@ function KF!(hh::Household, G_dense::Grid, pa::Params) # use G_dense, c.f. HJB!
     mass = sum(hh.g .* prod(G_dense.dx))
     if abs(mass - 1) > 1e-5
         println("Distribution not normalized!")
+    end
+end
+
+
+### MAIN SECTION
+mutable struct Problem # setup problem container for NonlinearSolve.jl
+    const pa::Params
+    hh::Household
+    G::Grid
+    const G_dense::Grid
+end
+
+function setup_p()
+    pa = Params();
+    hh = Household(pa);
+    # Sparse Grid
+    G = setup_grid(pa, surplus = pa.surplus, dense = false);
+    # Dense grid
+    G_dense = setup_grid(pa, surplus = pa.l_dense, dense = true);
+    # Projection matrix from sparse to dense: this is for KF! and consistent aggregation
+    G.BH_dense = get_projection_matrix(G, G_dense.grid, G_dense.lvl);
+    hh.income = hh.r .* G.value[:, G.names_dict[:a]] .+ hh.w .* G.value[:, G.names_dict[:z]]
+    hh.V = pa.u.(hh.income) ./ pa.ρ # V0
+    return Problem(pa, hh, G, G_dense)
+end
+
+function stationary!(r, p::Problem) # p as parameter, has to be the second position
+
+    # @assert hh.r < pa.ρ || hh.r > -0.1 "init r is too large or small"
+
+    # for iter = 1:pa.maxit
+        p.hh.income = r .* p.G.value[:, p.G.names_dict[:a]] .+ p.hh.w .* p.G.value[:, p.G.names_dict[:z]]
+        # State-constrained boundary conditions
+        left_bound = p.pa.u1.(p.hh.income)
+        right_bound = p.pa.u1.(p.hh.income)
+        BC = Vector{Dict}(undef, p.G.d)
+        BC[1] = Dict(
+            :lefttype => :VNB, :righttype => :VNF,
+            :leftfn => (x -> sparse_project(p.G, x, left_bound)),
+            :rightfn => (x -> sparse_project(p.G, x, right_bound))
+        )
+        BC[2] = Dict(
+            :lefttype => :zero, :righttype => :zero
+        )
+        gen_FD!(p.G, BC)
+        gen_FD!(p.G_dense, BC) # Note this is not actually necessary for Huggett !! this step is time consuming
+
+        # VALUE FUNCTION ITERATION
+        VFI!(p.hh, p.G, p.pa)
+        # KOLMOGOROV FORWARD
+        p.hh.s_dense = p.G.BH_dense * p.hh.spol
+        KF!(p.hh, p.G_dense, p.pa)
+        # MARKET CLEARING
+        a = p.G_dense.value[:, p.G.names_dict[:a]]
+        B = sum(a .* p.hh.g .* p.G_dense.dx[1] .* p.G_dense.dx[2])
+        # hh.ssS = sum(G.BH_dense * hh.spol .* hh.g .* da)
+
+        # # UPDATE INTEREST RATE
+        # if hh.B > pa.crit
+        #     # println("Excess Supply")
+        #     rmax = copy(hh.r)
+        #     hh.r = 0.5*hh.r + 0.5*rmin
+        # elseif hh.B < -pa.crit
+        #     # println("Excess Demand")
+        #     rmin = copy(hh.r)
+        #     hh.r = 0.5*hh.r + 0.5*rmax
+        # elseif abs(hh.B) < pa.crit
+        #     println("Equilibrium Found, Interest rate =", hh.r)
+        #     break
+        # end
+    # end
+    return B
+end
+
+function main!(p::Problem, u0)
+
+    probN = IntervalNonlinearProblem(stationary!, u0, p)
+
+    for iter = 1:p.pa.max_adapt_iter
+        println(" MainIteration = ", iter)
+        # stationary!(hh, G, G_dense, pa, rmin, rmax)
+        r = solve(probN, Bisection())
+        stationary!(r.u, p)
+        p.hh.V_adapt[iter] = p.hh.V
+        p.G.G_adapt[iter] = p.G.grid
+        adapt_grid!( # generate BH_adapt projection and update grid
+            p.G, p.hh.V,
+            AddRule = :tol, # Expand nodes with hierarchical coefficient greater than 'AddTol'
+            AddTol = 1e-5,
+            KeepTol = 1e-6
+        )
+        if p.G.stats_dict[:n_change] == 0
+            break
+        end
+        # update value function crt. the new grid
+        p.hh.V = p.G.BH_adapt * p.hh.V
+        # update the matrix projection to the dense grid
+        p.G.BH_dense = get_projection_matrix(p.G, p.G_dense.grid, p.G_dense.lvl)
     end
 end
 
