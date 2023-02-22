@@ -2,7 +2,7 @@ using LinearAlgebra, SparseArrays
 using Combinatorics, NonlinearSolve, LinearSolve
 
 include("../lib/grid_setup.jl")
-include("../lib/hierarchical.jl")
+include("../lib/grid_hierarchical.jl")
 include("../lib/grid_projection.jl")
 include("../lib/grid_FD.jl")
 include("../lib/grid_adaption.jl")
