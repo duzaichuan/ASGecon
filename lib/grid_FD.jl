@@ -1,16 +1,16 @@
+"""
+Constructs interior values of FD operators
+"""
 function gen_FD_interior!(G::Grid)
-
     grid_to_bound = G.bound_grid_dict[:grid_to_bound]
 
     for k = 1:G.d
-
         bound_grid = G.bound_grid_dict[:grid][k]
         bound_lvl = G.bound_grid_dict[:lvl][k]
         n_bound = size(bound_grid, 1)
         BH_grid_to_bound_comp = G.bound_grid_dict[:BH_grid_to_bound_comp][k]
         bound_Hk = G.bound_grid_dict[:bound_Hk][k]
         bound_Ek = G.bound_grid_dict[:bound_Ek][k]
-        # BH_grid_to_bound_comp = G.bound_grid_dict[:BH_comp][G.bound_grid_dict[:ids][k], :]
         
         interior_idx = findall(0.0 .< bound_grid[:, k] .< 1.0)
         left_neighbor_bound, right_neighbor_bound = G.bound_grid_dict[:left_neighbor_bound][k], G.bound_grid_dict[:right_neighbor_bound][k]
@@ -18,9 +18,6 @@ function gen_FD_interior!(G::Grid)
         right_interior = right_neighbor_bound[interior_idx]
         left_dist = bound_grid[interior_idx, k] .- bound_grid[left_interior, k]
         right_dist = bound_grid[right_interior, k] .- bound_grid[interior_idx, k]
-
-        # _, bound_Hk = gen_H_mat(bound_grid, bound_lvl, komit = k)
-        # bound_Ek = sparse(bound_Hk \ Matrix{Float64}(I, size(bound_Hk))) # inv(collect(bound_Hk)) !! singular k=2
 
         DF = sparse([interior_idx; interior_idx],
             [interior_idx; right_interior],
@@ -77,7 +74,9 @@ function stencil_central2(dx_left, dx_right)
 end
 
 """
-Constructs FD operators for given boundary conditions
+Constructs FD operators for given boundary conditions:
+- Most of the work focuses on computing boundary values of the FD Matrix
+- Finally, combine those boundary values with the interior FD Matrix (create_aux_fields!)
 
 INPUTS:
 - G: Grid struct
@@ -90,7 +89,6 @@ element is a struct with the following properties
 - name: (Optional) name associated with boundary condition, useful when
 using multiple boundary conditions for the same grid
 """
-
 function gen_FD!(G::Grid, BC::Vector{Dict}; name = :Main)
     # If BCs have not changed for a dimension and G.DS appears correctly
     # populated, skip computation of that dimension
@@ -124,7 +122,6 @@ function gen_FD!(G::Grid, BC::Vector{Dict}; name = :Main)
         bound_Ek = G.bound_grid_dict[:bound_Ek][k]
 
         left_neighbor_bound, right_neighbor_bound = G.bound_grid_dict[:left_neighbor_bound][k], G.bound_grid_dict[:right_neighbor_bound][k]
-        # left_neighbor_bound, right_neighbor_bound = find_neighbors(bound_grid, 1:n_bound, k)
         left_idx_bound = findall(bound_grid[:, k] .== 0)
         n_left_bound = length(left_idx_bound)
         right_idx_bound = findall(bound_grid[:, k] .== 1)
@@ -135,13 +132,6 @@ function gen_FD!(G::Grid, BC::Vector{Dict}; name = :Main)
 
         left_dist = bound_grid[:, k] .- bound_grid[left_neighbor_bound, k]
         right_dist = bound_grid[right_neighbor_bound, k] .- bound_grid[:, k]
-
-        # # This is faster than multiplying all the other Hk matrices again ?
-        # # !! following two steps are slow for huge dense grid
-        # bound_Hk = sparse(
-        #     G.bound_grid_dict[:bound_all_H][k][G.bound_grid_dict[:ids][k], G.bound_grid_dict[:ids][k]] \ collect(G.bound_grid_dict[:bound_all_H_comp][G.bound_grid_dict[:ids][k], G.bound_grid_dict[:ids][k]])
-        # )
-        # bound_Ek = sparse(bound_Hk \ Matrix{Float64}(I, size(bound_Hk))) # inv(bound_Hk)
 
         # Distance for exterior ghost nodes (not actually created in memory)
         left_offset = minimum(right_dist[left_idx_bound])
@@ -231,7 +221,7 @@ function gen_FD!(G::Grid, BC::Vector{Dict}; name = :Main)
         
         # Note: No const terms for reflecting boundaries
         if BC_left == :VNB
-            const_c_left .= f_bound_left(bound_grid[left_idx_bound, :])[:] .* (-left_offset) # !!
+            const_c_left .= f_bound_left(bound_grid[left_idx_bound, :])[:] .* (-left_offset)
             
             # VNB: fx(0) = (f(0) - f(-1)) / h => f(-1) = f(0) - h*fx(0)
             G.DS_const_dict[Symbol(name, :D1B)][k][left_idx_bound] .= const_c_left .* (-1/left_offset)
@@ -312,7 +302,6 @@ OUTPUTS:
 - bound_const: Residual constant terms
 
 """
-# G = G_dense;
 function FD_operator(G::Grid; μ, σ, dims, BC_name = :Main) # build matrix A
 
     if G.d == 1 && !G.sparse && any(iszero, σ)
@@ -388,7 +377,6 @@ function vec_x_spijs(v, ijs)
 
     return ijs_new # ijs_new[:,3] is s/Δa
 end
-
 
 function deriv_sparse(G::Grid, f; operator::Symbol, dims::Int64, name=:Main)
     deriv = (G.DS_interior_dict[operator][dims] .+ G.DS_boundary_dict[Symbol(name, operator)][dims]) * f .+ G.DS_const_dict[Symbol(name, operator)][dims]

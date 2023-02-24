@@ -152,32 +152,32 @@ end
 function stationary!(r, p::Problem) # p as parameter, has to be the second position
 
     # @assert hh.r < pa.ρ || hh.r > -0.1 "init r is too large or small"
-
+    (; pa, hh, G, G_dense) = p
     # for iter = 1:pa.maxit
-        p.hh.income = r .* p.G.value[:, p.G.names_dict[:a]] .+ p.hh.w .* p.G.value[:, p.G.names_dict[:z]]
+        hh.income = r .* G.value[:, G.names_dict[:a]] .+ hh.w .* G.value[:, G.names_dict[:z]]
         # State-constrained boundary conditions
-        left_bound = p.pa.u1.(p.hh.income)
-        right_bound = p.pa.u1.(p.hh.income)
-        BC = Vector{Dict}(undef, p.G.d)
+        left_bound = pa.u1.(hh.income)
+        right_bound = pa.u1.(hh.income)
+        BC = Vector{Dict}(undef, G.d)
         BC[1] = Dict(
             :lefttype => :VNB, :righttype => :VNF,
-            :leftfn => (x -> sparse_project(p.G, x, left_bound)),
-            :rightfn => (x -> sparse_project(p.G, x, right_bound))
+            :leftfn => (x -> sparse_project(G, x, left_bound)),
+            :rightfn => (x -> sparse_project(G, x, right_bound))
         )
         BC[2] = Dict(
             :lefttype => :zero, :righttype => :zero
         )
-        gen_FD!(p.G, BC)
-        gen_FD!(p.G_dense, BC) # Note this is not actually necessary for Huggett !! this step is time consuming
+        gen_FD!(G, BC)
+        gen_FD!(G_dense, BC) # Note this is not actually necessary for Huggett !! this step is time consuming
 
         # VALUE FUNCTION ITERATION
-        VFI!(p.hh, p.G, p.pa)
+        VFI!(hh, G, pa)
         # KOLMOGOROV FORWARD
-        p.hh.s_dense = p.G.BH_dense * p.hh.spol
-        KF!(p.hh, p.G_dense, p.pa)
+        hh.s_dense = G.BH_dense * hh.spol
+        KF!(hh, G_dense, pa)
         # MARKET CLEARING
-        a = p.G_dense.value[:, p.G.names_dict[:a]]
-        B = sum(a .* p.hh.g .* p.G_dense.dx[1] .* p.G_dense.dx[2])
+        a = G_dense.value[:, G.names_dict[:a]]
+        B = sum(a .* hh.g .* G_dense.dx[1] .* G_dense.dx[2])
         # hh.ssS = sum(G.BH_dense * hh.spol .* hh.g .* da)
 
         # # UPDATE INTEREST RATE
@@ -200,27 +200,28 @@ end
 function main!(p::Problem, u0)
 
     probN = IntervalNonlinearProblem(stationary!, u0, p)
+    (; pa, hh, G, G_dense) = p
 
-    for iter = 1:p.pa.max_adapt_iter
+    for iter = 1:pa.max_adapt_iter
         println(" MainIteration = ", iter)
         # stationary!(hh, G, G_dense, pa, rmin, rmax)
         r = solve(probN, Bisection())
         stationary!(r.u, p)
-        p.hh.V_adapt[iter] = p.hh.V
-        p.G.G_adapt[iter] = p.G.grid
+        hh.V_adapt[iter] = hh.V
+        G.G_adapt[iter] = G.grid
         adapt_grid!( # generate BH_adapt projection and update grid
-            p.G, p.hh.V,
+            G, hh.V,
             AddRule = :tol, # Expand nodes with hierarchical coefficient greater than 'AddTol'
             AddTol = 1e-5,
             KeepTol = 1e-6
         )
-        if p.G.stats_dict[:n_change] == 0
+        if G.stats_dict[:n_change] == 0
             break
         end
         # update value function crt. the new grid
-        p.hh.V = p.G.BH_adapt * p.hh.V
+        hh.V = G.BH_adapt * hh.V
         # update the matrix projection to the dense grid
-        p.G.BH_dense = get_projection_matrix(p.G, p.G_dense.grid, p.G_dense.lvl)
+        G.BH_dense = get_projection_matrix(G, G_dense.grid, G_dense.lvl)
     end
 end
 

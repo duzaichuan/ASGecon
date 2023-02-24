@@ -40,7 +40,7 @@ function setup_grid(pa::Params; level::Int64, surplus::Vector{Int64})
     for i = 1:pa.d
         dx[i] = pa.range[pa.named_dims[i]] * minimum(h[:, pa.named_dims[i]])
     end
-    _, H_comp = gen_H_mat(grid, lvl_grid)
+    _, H_comp = gen_H_mat(grid, lvl_grid) # func in grid_hierarchical.jl
 
     if isdefined(pa, :discrete_types)
         DS_boundary_dict = Dict{Symbol, Union{Array, SparseMatrixCSC}}()
@@ -139,7 +139,7 @@ function setup_grid(pa::Params; level::Int64, surplus::Vector{Int64})
         Vector{Matrix{Float64}}(undef, pa.max_adapt_iter) # G_adapt
     )
     gen_bound_grid!(G)
-    gen_FD_interior!(G)
+    gen_FD_interior!(G) # func in grid_FD.jl
 
     return G
 end
@@ -276,8 +276,8 @@ function gen_bound_grid!(G::Grid)
         IA = unique(i -> bound_grid_rows[i], eachindex(bound_grid_rows))
         bound_grid = bound_grid[IA, :]
         bound_lvl = bound_lvl[IA, :]
-        _, bound_Hk = gen_H_mat(bound_grid, bound_lvl, komit = k)
-        bound_Ek = sparse(bound_Hk \ Matrix{Float64}(I, size(bound_Hk))) # inv(collect(bound_Hk)) !! singular k=2
+        _, bound_Hk = gen_H_mat(bound_grid, bound_lvl, komit = k) # func in grid_hierarchical.jl
+        bound_Ek = sparse(bound_Hk \ Matrix{Float64}(I, size(bound_Hk))) # inv(collect(bound_Hk))
         IC = indexin(bound_grid_rows, eachrow(bound_grid))
         grid_to_bound = IC[1:G.J]
 
@@ -298,10 +298,9 @@ function gen_bound_grid!(G::Grid)
     bound_grid_all = bound_grid_all[IA, :]
     bound_lvl_all = bound_lvl_all[IA, :]
     IC = indexin(bound_grid_all_rows, eachrow(bound_grid_all))
-    BH_comp = get_projection_matrix(G, bound_grid_all, bound_lvl_all)
+    BH_comp = get_projection_matrix(G, bound_grid_all, bound_lvl_all) # func in grid_projection.jl
     for k = 1:G.d
         ids = IC[bound_ids .== k]
         G.bound_grid_dict[:BH_grid_to_bound_comp][k] = BH_comp[ids, :]
     end
-    # G.bound_grid_dict[:bound_all_H], G.bound_grid_dict[:bound_all_H_comp] = gen_H_mat(bound_grid_all, bound_lvl_all)
 end
