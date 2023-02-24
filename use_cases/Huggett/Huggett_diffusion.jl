@@ -1,158 +1,16 @@
 using LinearAlgebra, SparseArrays
 using Combinatorics, NonlinearSolve, LinearSolve
 
-include("../lib/grid_setup.jl")
-include("../lib/grid_hierarchical.jl")
-include("../lib/grid_projection.jl")
-include("../lib/grid_FD.jl")
-include("../lib/grid_adaption.jl")
+include("params_diffusion.jl")
+include("../../lib/grid_setup.jl")
+include("../../lib/grid_hierarchical.jl")
+include("../../lib/grid_projection.jl")
+include("../../lib/grid_FD.jl")
+include("../../lib/grid_adaption.jl")
 
 # Probably can use @view upon matrices slicing to speed up
 #!! when itr is empty in reduce(vcat,[]), errors appear
 #!! Indexing operations, especially assignment, are expensive, when carried out one element at a time.
-
-### Parameters
-@kwdef struct Params # Huggett DIFFUSION
-    # Grid construction
-    l::Int64               = 2
-    surplus::Vector{Int64} = [2, 0]
-    l_dense::Vector{Int64} = [7, 4] # vector of "surplus" for dense grid
-    d::Int64               = 2 # total dimension
-    d_idio::Int64          = 2
-    d_agg::Int64           = 0
-    amin::Float64          = -1.0
-    amax::Float64          = 20.0
-    zmin::Float64          = 0.8
-    zmax::Float64          = 1.2
-    min::Matrix{Float64}   = [amin zmin]
-    max::Matrix{Float64}   = [amax zmax]
-
-    # Grid adaptation:
-    add_rule::Symbol      = :tol
-    add_tol::Float64      = 1e-5
-    keep_tol::Float64     = 1e-6 # keep_tol should be smaller than add_tol
-    max_adapt_iter::Int64 = 20
-
-    # PDE tuning parameters
-    Δ::Int64              = 1000
-    maxit::Int64          = 100
-    crit::Float64         = 1e-8
-    Δ_KF::Int64           = 1000
-    maxit_KF::Int64       = 100
-    crit_KF::Float64      = 1e-8
-
-    ## ECONOMIC PARAMETERS
-    # Household parameters
-    ρ::Float64 = 0.02
-    γ::Float64 = 2.0
-    u     = x -> x ^ (1 - γ) / (1 - γ)
-    u1    = x -> x ^ (-γ)
-    u1inv = x -> x ^ (-1/γ)
-
-    # Earning parameters
-    zmean::Float64            = 1.0
-    θz::Float64               = 0.25
-    σz::Float64               = 0.01
-    L::Float64                = 1.0
-
-    range::Matrix{Float64}    = max .- min
-    dxx_dims::Vector{Int64}   = [2]
-    dxy_dims::Vector{Int64}   = Int[]
-    names::Vector{Symbol}     = [:a, :z]
-    named_dims::Vector{Int64} = [1, 2]
-end
-
-### SETUP GRID
-function setup_grid(pa::Params; surplus::Vector{Int64}, dense = false)
-    if dense == true
-        l = 0
-    else
-        l = pa.l
-    end
-    names_dict = Dict(pa.names[i] => pa.named_dims[i] for i = 1:pa.d)
-    grid, lvl_grid = gen_sparse_grid(pa.d, l, surplus)
-    J = size(grid, 1)
-    h = 2.0 .^ (-lvl_grid)
-    value = grid .* pa.range .+ pa.min # !!
-    da = pa.range[names_dict[:a]] * minimum(h[:, names_dict[:a]])
-    dz = pa.range[names_dict[:z]] * minimum(h[:, names_dict[:z]])
-    dx = [da dz]
-    _, H_comp = gen_H_mat(grid, lvl_grid)
-
-    DS_boundary_dict = Dict{Symbol, Union{Array, SparseMatrixCSC}}(
-        :MainD1F => Vector{SparseMatrixCSC}(undef, pa.d),
-        :MainD1B => Vector{SparseMatrixCSC}(undef, pa.d),
-        :MainD1C => Vector{SparseMatrixCSC}(undef, pa.d),
-        :MainD2  => Vector{SparseMatrixCSC}(undef, pa.d)
-    )
-    DSijs_dict = Dict{Symbol, Union{Array, SparseMatrixCSC}}(
-        :MainD1F  => Vector{Matrix{Float64}}(undef, pa.d),
-        :MainD1B  => Vector{Matrix{Float64}}(undef, pa.d),
-        :MainD1C  => Vector{Matrix{Float64}}(undef, pa.d),
-        :MainD2   => Vector{Matrix{Float64}}(undef, pa.d)
-    )
-    DS_const_dict = Dict{Symbol, Union{Array, SparseMatrixCSC}}(
-        :DCH_Main  => Vector{SparseMatrixCSC}(undef, pa.d),
-        :MainD1F  => Vector{Vector{Float64}}(undef, pa.d),
-        :MainD1B  => Vector{Vector{Float64}}(undef, pa.d),
-        :MainD1C  => Vector{Vector{Float64}}(undef, pa.d),
-        :MainD2   => Vector{Vector{Float64}}(undef, pa.d)
-    )
-    DFull_dict = Dict{Symbol, Union{Array, SparseMatrixCSC}}(
-        :MainD1F  => Vector{Matrix{Float64}}(undef, pa.d),
-        :MainD1B  => Vector{Matrix{Float64}}(undef, pa.d),
-        :MainD1C  => Vector{Matrix{Float64}}(undef, pa.d),
-        :MainD2   => Vector{Matrix{Float64}}(undef, pa.d)
-    )
-
-    G = Grid(
-        pa.d,
-        pa.min,
-        pa.range,
-        names_dict,
-        pa.dxx_dims,
-        pa.dxy_dims,
-        grid,
-        lvl_grid,
-        h, # hierarchical nodal distance
-        value, # 0-1 to economic values
-        dx, # mesh grid distance
-        J, # number of points in the grid
-        J > 100, # sparse or not
-        H_comp, # hierarchical gains
-        spzeros(J,J), # BH_dense
-        spzeros(J,J), # BH_adapt
-        Dict{Symbol, Union{Array, SparseMatrixCSC}}( # bound_grid_dict
-            :grid_to_bound => Vector{Vector{Int64}}(undef, pa.d),
-            :grid => Vector{Matrix{Float64}}(undef, pa.d),
-            :lvl => Vector{Matrix{Int64}}(undef, pa.d),
-            # :ids => Vector{Vector{Int64}}(undef, pa.d),
-            :BH_grid_to_bound_comp => Vector{SparseMatrixCSC}(undef, pa.d),
-            :bound_Hk => Vector{SparseMatrixCSC}(undef, pa.d),
-            :bound_Ek => Vector{SparseMatrixCSC}(undef, pa.d),
-            :left_neighbor_bound => Vector{Vector{Int64}}(undef, pa.d),
-            :right_neighbor_bound => Vector{Vector{Int64}}(undef, pa.d)
-        ),
-        Dict{Symbol, Vector{Dict}}(), # BC_dict
-        Dict{Symbol, Union{Array, SparseMatrixCSC}}( # DS_interior_dict
-            :D1F => Vector{SparseMatrixCSC}(undef, pa.d),
-            :D1B => Vector{SparseMatrixCSC}(undef, pa.d),
-            :D1C => Vector{SparseMatrixCSC}(undef, pa.d),
-            :D2  => Vector{SparseMatrixCSC}(undef, pa.d)
-        ),
-        DS_boundary_dict,
-        DS_const_dict,
-        DSijs_dict,
-        DFull_dict,
-        Dict{Symbol, Union{Int64, Float64}}(), # stats_dict
-        Matrix{Float64}(undef,0,0), # blacklist
-        Vector{Matrix{Float64}}(undef, pa.max_adapt_iter) # G_adapt
-    )
-    gen_bound_grid!(G)
-    gen_FD_interior!(G)
-
-    return G
-end
 
 ### HOUSEHOLD VARIABLES
 mutable struct Household
@@ -281,9 +139,9 @@ function setup_p()
     pa = Params();
     hh = Household(pa);
     # Sparse Grid
-    G = setup_grid(pa, surplus = pa.surplus, dense = false);
+    G = setup_grid(pa, level = pa.l, surplus = pa.surplus);
     # Dense grid
-    G_dense = setup_grid(pa, surplus = pa.l_dense, dense = true);
+    G_dense = setup_grid(pa, level = 0, surplus = pa.l_dense);
     # Projection matrix from sparse to dense: this is for KF! and consistent aggregation
     G.BH_dense = get_projection_matrix(G, G_dense.grid, G_dense.lvl);
     hh.income = hh.r .* G.value[:, G.names_dict[:a]] .+ hh.w .* G.value[:, G.names_dict[:z]]

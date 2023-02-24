@@ -29,6 +29,121 @@ mutable struct Grid
     G_adapt::Vector{Matrix{Float64}}
 end
 
+function setup_grid(pa::Params; level::Int64, surplus::Vector{Int64})
+
+    names_dict = Dict(pa.names[i] => pa.named_dims[i] for i = 1:pa.d)
+    grid, lvl_grid = gen_sparse_grid(pa.d, level, surplus)
+    J = size(grid, 1)
+    h = 2.0 .^ (-lvl_grid)
+    value = grid .* pa.range .+ pa.min
+    dx = zeros(1, pa.d)
+    for i = 1:pa.d
+        dx[i] = pa.range[pa.named_dims[i]] * minimum(h[:, pa.named_dims[i]])
+    end
+    _, H_comp = gen_H_mat(grid, lvl_grid)
+
+    if isdefined(pa, :discrete_types)
+        DS_boundary_dict = Dict{Symbol, Union{Array, SparseMatrixCSC}}()
+        DSijs_dict = Dict{Symbol, Union{Array, SparseMatrixCSC}}()
+        DS_const_dict = Dict{Symbol, Union{Array, SparseMatrixCSC}}()
+        DFull_dict = Dict{Symbol, Union{Array, SparseMatrixCSC}}()
+        for i in 1:length(pa.discrete_types)
+            name = pa.discrete_types[i]
+            DS_boundary_dict[Symbol(name, :D1F)] = Vector{SparseMatrixCSC}(undef, pa.d)
+            DS_boundary_dict[Symbol(name, :D1B)] = Vector{SparseMatrixCSC}(undef, pa.d)
+            DS_boundary_dict[Symbol(name, :D1C)] = Vector{SparseMatrixCSC}(undef, pa.d)
+            DS_boundary_dict[Symbol(name, :D2)] = Vector{SparseMatrixCSC}(undef, pa.d)
+            DSijs_dict[Symbol(name, :D1F)] = Vector{Matrix{Float64}}(undef, pa.d)
+            DSijs_dict[Symbol(name, :D1B)] = Vector{Matrix{Float64}}(undef, pa.d)
+            DSijs_dict[Symbol(name, :D1C)] = Vector{Matrix{Float64}}(undef, pa.d)
+            DSijs_dict[Symbol(name, :D2)] = Vector{Matrix{Float64}}(undef, pa.d)
+            DS_const_dict[Symbol(:DCH_, name)] = Vector{SparseMatrixCSC}(undef, pa.d)
+            DS_const_dict[Symbol(name, :D1F)] = Vector{Vector{Float64}}(undef, pa.d)
+            DS_const_dict[Symbol(name, :D1B)] = Vector{Vector{Float64}}(undef, pa.d)
+            DS_const_dict[Symbol(name, :D1C)] = Vector{Vector{Float64}}(undef, pa.d)
+            DS_const_dict[Symbol(name, :D2)] = Vector{Vector{Float64}}(undef, pa.d)
+            DFull_dict[Symbol(name, :D1F)] = Vector{Matrix{Float64}}(undef, pa.d)
+            DFull_dict[Symbol(name, :D1B)] = Vector{Matrix{Float64}}(undef, pa.d)
+            DFull_dict[Symbol(name, :D1C)] = Vector{Matrix{Float64}}(undef, pa.d)
+            DFull_dict[Symbol(name, :D2)] = Vector{Matrix{Float64}}(undef, pa.d)
+        end
+    else
+        DS_boundary_dict = Dict{Symbol, Union{Array, SparseMatrixCSC}}(
+            :MainD1F => Vector{SparseMatrixCSC}(undef, pa.d),
+            :MainD1B => Vector{SparseMatrixCSC}(undef, pa.d),
+            :MainD1C => Vector{SparseMatrixCSC}(undef, pa.d),
+            :MainD2  => Vector{SparseMatrixCSC}(undef, pa.d)
+        )
+        DSijs_dict = Dict{Symbol, Union{Array, SparseMatrixCSC}}(
+            :MainD1F  => Vector{Matrix{Float64}}(undef, pa.d),
+            :MainD1B  => Vector{Matrix{Float64}}(undef, pa.d),
+            :MainD1C  => Vector{Matrix{Float64}}(undef, pa.d),
+            :MainD2   => Vector{Matrix{Float64}}(undef, pa.d)
+        )
+        DS_const_dict = Dict{Symbol, Union{Array, SparseMatrixCSC}}(
+            :DCH_Main  => Vector{SparseMatrixCSC}(undef, pa.d),
+            :MainD1F  => Vector{Vector{Float64}}(undef, pa.d),
+            :MainD1B  => Vector{Vector{Float64}}(undef, pa.d),
+            :MainD1C  => Vector{Vector{Float64}}(undef, pa.d),
+            :MainD2   => Vector{Vector{Float64}}(undef, pa.d)
+        )
+        DFull_dict = Dict{Symbol, Union{Array, SparseMatrixCSC}}(
+            :MainD1F  => Vector{Matrix{Float64}}(undef, pa.d),
+            :MainD1B  => Vector{Matrix{Float64}}(undef, pa.d),
+            :MainD1C  => Vector{Matrix{Float64}}(undef, pa.d),
+            :MainD2   => Vector{Matrix{Float64}}(undef, pa.d)
+        )
+    end
+
+    G = Grid(
+        pa.d,
+        pa.min,
+        pa.range,
+        names_dict,
+        pa.dxx_dims,
+        pa.dxy_dims,
+        grid,
+        lvl_grid,
+        h, # hierarchical nodal distance
+        value, # 0-1 to economic values
+        dx, # mesh grid distance
+        J, # number of points in the grid
+        J > 100, # sparse or not
+        H_comp, # hierarchical gains
+        spzeros(J,J), # BH_dense
+        spzeros(J,J), # BH_adapt
+        Dict{Symbol, Union{Array, SparseMatrixCSC}}( # bound_grid_dict
+            :grid_to_bound => Vector{Vector{Int64}}(undef, pa.d),
+            :grid => Vector{Matrix{Float64}}(undef, pa.d),
+            :lvl => Vector{Matrix{Int64}}(undef, pa.d),
+            # :ids => Vector{Vector{Int64}}(undef, pa.d),
+            :BH_grid_to_bound_comp => Vector{SparseMatrixCSC}(undef, pa.d),
+            :bound_Hk => Vector{SparseMatrixCSC}(undef, pa.d),
+            :bound_Ek => Vector{SparseMatrixCSC}(undef, pa.d),
+            :left_neighbor_bound => Vector{Vector{Int64}}(undef, pa.d),
+            :right_neighbor_bound => Vector{Vector{Int64}}(undef, pa.d)
+        ),
+        Dict{Symbol, Vector{Dict}}(), # BC_dict
+        Dict{Symbol, Union{Array, SparseMatrixCSC}}( # DS_interior_dict
+            :D1F => Vector{SparseMatrixCSC}(undef, pa.d),
+            :D1B => Vector{SparseMatrixCSC}(undef, pa.d),
+            :D1C => Vector{SparseMatrixCSC}(undef, pa.d),
+            :D2  => Vector{SparseMatrixCSC}(undef, pa.d)
+        ),
+        DS_boundary_dict,
+        DS_const_dict,
+        DSijs_dict,
+        DFull_dict,
+        Dict{Symbol, Union{Int64, Float64}}(), # stats_dict
+        Matrix{Float64}(undef,0,0), # blacklist
+        Vector{Matrix{Float64}}(undef, pa.max_adapt_iter) # G_adapt
+    )
+    gen_bound_grid!(G)
+    gen_FD_interior!(G)
+
+    return G
+end
+
 #=
 GRID-SETUP AND PROJECTION FUNCTIONS
 =#
