@@ -29,7 +29,7 @@ mutable struct Grid
     G_adapt::Vector{Matrix{Float64}}
 end
 
-function setup_grid(pa::Params; level::Int64, surplus::Vector{Int64})
+function setup_grid(pa; level::Int64, surplus::Vector{Int64})
 
     names_dict = Dict(pa.names[i] => pa.named_dims[i] for i = 1:pa.d)
     grid, lvl_grid = gen_sparse_grid(pa.d, level, surplus)
