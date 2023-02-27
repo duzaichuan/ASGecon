@@ -226,7 +226,7 @@ function update_grid!(G::Grid, grid_new, lvl_new)
 
     @assert size(grid_new, 2) == G.d "Updated grid must have same dimensionality as previous grid."
     G.BH_adapt = H_basis(grid_new, lvl_new, G.grid, G.lvl) * G.H_comp # project value function on the old grid to the new adapted grid
-    G.h = 2.0 .^(-grid_new)
+    G.h = 2.0 .^(-lvl_new)
     G.J = size(grid_new, 1)
     _, G.H_comp = gen_H_mat(grid_new, lvl_new)
     G.grid = grid_new
