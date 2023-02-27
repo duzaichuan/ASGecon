@@ -138,7 +138,7 @@ function add_parents(grid::Matrix{Float64}, levels::Matrix{Int64})
     end
     idx_def = filter(i -> isassigned(parents_cell,i), 1:length(parents_cell))
     if !isempty(parents_cell[idx_def])
-        parents = reduce(vcat, parents_cell[idx_def]) # !! undef
+        parents = reduce(vcat, parents_cell[idx_def])
         parent_levels = reduce(vcat, parent_levels_cell[idx_def])
     else
         parents = Float64[]

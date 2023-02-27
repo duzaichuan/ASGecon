@@ -1,7 +1,6 @@
 using LinearAlgebra, SparseArrays
 using Combinatorics, NonlinearSolve, LinearSolve
 
-include("params_diffusion.jl")
 include("../../lib/grid_setup.jl")
 include("../../lib/grid_hierarchical.jl")
 include("../../lib/grid_projection.jl")
@@ -9,6 +8,57 @@ include("../../lib/grid_FD.jl")
 include("../../lib/grid_adaption.jl")
 
 #!! when itr is empty in reduce(vcat,[]), errors appear
+@kwdef struct Params
+    # Grid construction
+    l::Int64               = 2
+    surplus::Vector{Int64} = [3, 0]
+    l_dense::Vector{Int64} = [7, 2] # vector of "surplus" for dense grid
+    d::Int64               = 2 # total dimension
+    d_idio::Int64          = 2
+    d_agg::Int64           = 0
+    kmin::Float64          = 0.0
+    kmax::Float64          = 50.0
+    zmin::Float64          = 0.3
+    zmax::Float64          = 1.5
+    min::Matrix{Float64}   = [kmin zmin]
+    max::Matrix{Float64}   = [kmax zmax]
+
+    # Grid adaptation:
+    add_rule::Symbol      = :tol
+    add_tol::Float64      = 1e-5
+    keep_tol::Float64     = 1e-6 # keep_tol should be smaller than add_tol
+    max_adapt_iter::Int64 = 20
+
+    # PDE tuning parameters
+    Δ::Int64              = 1000
+    maxit::Int64          = 100
+    crit::Float64         = 1e-8
+    Δ_KF::Int64           = 1000
+    maxit_KF::Int64       = 100
+    crit_KF::Float64      = 1e-8
+
+    ## ECONOMIC PARAMETERS
+    # Household parameters
+    ρ::Float64 = 0.05
+    γ::Float64 = 2.0
+    α::Float64 = 0.33
+    δ::Float64 = 0.05
+    u     = x -> x ^ (1 - γ) / (1 - γ)
+    u1    = x -> x ^ (-γ)
+    u1inv = x -> x ^ (-1/γ)
+
+    # Earning parameters
+    zmean::Float64            = (zmax + zmin)/2
+    θz::Float64               = 0.25
+    σz::Float64               = 0.02
+    L::Float64                = copy(zmean)
+
+    range::Matrix{Float64}    = max .- min
+    dxx_dims::Vector{Int64}   = [2]
+    dxy_dims::Vector{Int64}   = Int[]
+    names::Vector{Symbol}     = [:k, :z]
+    named_dims::Vector{Int64} = [1, 2]
+end
 
 ### HOUSEHOLD VARIABLES
 mutable struct Household
@@ -36,10 +86,10 @@ function Household(pa::Params)
     u  = zeros(2)
     g  = zeros(2)
     A = spzeros(10,10)
-    r = pa.ρ/3
-    w = 1.0
+    r = pa.ρ/2
+    w = 0.75
     Y = pa.L
-    K = 1.0
+    K = 6.0
     C = 1.0
     income = [pa.zmean]
     V_adapt = Vector{Vector{Float64}}(undef, pa.max_adapt_iter)
@@ -77,7 +127,6 @@ function VFI!(hh::Household, G::Grid, pa::Params)
 	end
     end
 end
-
 
 function HJB!(hh::Household, G::Grid, pa::Params)
 
@@ -123,7 +172,6 @@ function KF!(hh::Household, G_dense::Grid, pa::Params) # use G_dense, c.f. HJB!
     end
 end
 
-
 ### MAIN SECTION
 mutable struct Problem # setup problem container for NonlinearSolve.jl
     const pa::Params
@@ -146,51 +194,59 @@ function setup_p()
     return Problem(pa, hh, G, G_dense)
 end
 
-function stationary!(K, p::Problem) # p as parameter, has to be the second position
-
-    (; pa, hh, G, G_dense) = p
-    hh.Y = K^pa.α * pa.L^(1-pa.α)
-    rk = pa.α * hh.Y / K
-    hh.w = (1 - pa.α) * hh.Y / pa.L
-    hh.r = rk - pa.δ
-    hh.income = hh.r .* G.value[:, G.names_dict[:k]] .+ hh.w .* G.value[:, G.names_dict[:z]]
-
-    # State-constrained boundary conditions
-    left_bound = pa.u1.(hh.income)
-    right_bound = pa.u1.(hh.income)
+function stationary!(p::Problem) # p as parameter, has to be the second position
+    (; pa, hh, G, G_dense) = p;
     BC = Vector{Dict}(undef, G.d)
-    BC[1] = Dict(
-        :lefttype => :VNB, :righttype => :VNF,
-        :leftfn => (x -> sparse_project(G, x, left_bound)),
-        :rightfn => (x -> sparse_project(G, x, right_bound))
-    )
-    BC[2] = Dict(
-        :lefttype => :zero, :righttype => :zero
-    )
-    gen_FD!(G, BC)
-    gen_FD!(G_dense, BC) # Note this is not actually necessary for Huggett !! this step is time consuming
 
-    # VALUE FUNCTION ITERATION
-    VFI!(hh, G, pa)
-    # KOLMOGOROV FORWARD
-    hh.s_dense = G.BH_dense * hh.spol
-    KF!(hh, G_dense, pa)
-    # MARKET CLEARING
-    k = G_dense.value[:, G.names_dict[:k]]
-    hh.K = sum(k .* hh.g .* G_dense.dx[1] .* G_dense.dx[2])
+    for iter = 1:pa.maxit
+        # println("iter: ", iter)
+        Y = hh.K^(pa.α) * pa.L^(1-pa.α)
+        hh.r = pa.α * Y / hh.K - pa.δ
+        hh.w = (1-pa.α) * Y / pa.L
+        hh.income = hh.r .* G.value[:, G.names_dict[:k]] .+ hh.w .* G.value[:, G.names_dict[:z]]
 
-    return K - hh.K
+        # State-constrained boundary conditions
+        left_bound = pa.u1.(hh.income)
+        right_bound = pa.u1.(hh.income)
+        BC[1] = Dict(
+            :lefttype => :VNB, :righttype => :VNF,
+            :leftfn => (x -> sparse_project(G, x, left_bound)),
+            :rightfn => (x -> sparse_project(G, x, right_bound))
+        )
+        BC[2] = Dict(
+            :lefttype => :zero, :righttype => :zero
+        )
+        gen_FD!(G, BC)
+        gen_FD!(G_dense, BC)
+
+        # VALUE FUNCTION ITERATION
+        VFI!(hh, G, pa)
+        # KOLMOGOROV FORWARD
+        hh.s_dense = G.BH_dense * hh.spol
+        KF!(hh, G_dense, pa)
+        # MARKET CLEARING
+        k = G_dense.value[:, G.names_dict[:k]]
+        Knew = sum(k .* hh.g .* G_dense.dx[1] .* G_dense.dx[2])
+        # UPDATE INTEREST RATE
+        if abs(hh.K - Knew) < pa.crit
+            break
+        elseif iter == pa.maxit
+            println("Max iteration reached")
+        else
+            hh.K = 0.99*hh.K + (1-0.99)*Knew
+        end
+    end
+    # return K - hh.K
 end
 
-function main!(p::Problem, u0)
-
-    probN = IntervalNonlinearProblem(stationary!, u0, p)
-    (; pa, hh, G, G_dense) = p
+function main!(p::Problem)
+    (; pa, hh, G, G_dense) = p;
 
     for iter = 1:pa.max_adapt_iter
         println(" MainIteration = ", iter)
-        K = solve(probN, Bisection())
-        stationary!(K.u, p)
+        # probN = NonlinearProblem(NonlinearFunction(stationary!), hh.K, p)
+        # K = solve(probN, SimpleNewtonRaphson())
+        stationary!(p)
         hh.V_adapt[iter] = hh.V
         G.G_adapt[iter] = G.grid
         adapt_grid!( # generate BH_adapt projection and update grid
@@ -209,7 +265,8 @@ function main!(p::Problem, u0)
     end
 end
 
-u0 = (4.0, 6.0)
+u0 = (5.0, 8.0)
 p = setup_p();
-@time main!(p, u0) # 22s, still 2.5x slower than original matlab code
-# show(stdout, "text/plain", setdiff(G.G_adapt[4], G.G_adapt[5]))
+stationary!(p)
+@time main!(p) # 22s, still 2.5x slower than original matlab code
+# show(stdout, "text/plain", VaF)

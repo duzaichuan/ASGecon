@@ -43,7 +43,7 @@ function gen_FD_interior!(G::Grid)
         G.DS_interior_dict[:D1C][k] = D1C_interior[grid_to_bound[k], :]
 
         if issubset(k, G.dxx_dims)
-            a, b, c =  stencil_central2(left_dist, right_dist) # !!
+            a, b, c =  stencil_central2(left_dist, right_dist)
             D2 = sparse([interior_idx; interior_idx; interior_idx],
                         [left_interior; interior_idx; right_interior],
                         [a; b; c],
@@ -239,7 +239,7 @@ function gen_FD!(G::Grid, BC::Vector{Dict}; name = :Main)
             const_c_right .= f_bound_right(bound_grid[right_idx_bound, :])[:] .* right_offset
             
             # VNF: fx(J) = (f(J+1) - f(J)) / h => f(J+1) = f(J) + h*fx(J)
-            G.DS_const_dict[Symbol(name, :D1F)][k][right_idx_bound] .= const_c_right .* (1/right_offset) # !!
+            G.DS_const_dict[Symbol(name, :D1F)][k][right_idx_bound] .= const_c_right .* (1/right_offset)
             G.DS_const_dict[Symbol(name, :D1C)][k][right_idx_bound] .= const_c_right .* c1[right_idx_bound]
             if n_right_bound == 1
                 G.DS_const_dict[Symbol(:DCH_, name)][k][right_idx_bound, end-n_right_bound+1:end] .= c1[n_right_bound]

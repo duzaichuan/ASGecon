@@ -216,7 +216,7 @@ function stationary!(r, p::Problem) # p as parameter, has to be the second posit
             :lefttype => :zero, :righttype => :zero
         )
         gen_FD!(G, BC)
-        gen_FD!(G_dense, BC) # Note this is not actually necessary for Huggett !! this step is time consuming
+        gen_FD!(G_dense, BC) # Note this is not actually necessary for Huggett
 
         # VALUE FUNCTION ITERATION
         VFI!(hh, G, pa)
