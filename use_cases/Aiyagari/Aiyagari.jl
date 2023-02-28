@@ -71,6 +71,9 @@ mutable struct Household
     g::Vector{Float64} # distribution
     K::Float64
     C::Float64
+    S::Float64
+    excess_supply::Float64
+    excess_capital::Float64
     r::Float64
     w::Float64
     Y::Float64
@@ -91,15 +94,18 @@ function Household(pa::Params)
     Y = pa.L
     K = 6.0
     C = 1.0
+    S = 0.0
+    excess_supply = 0.0
+    excess_capital = 0.0
     income = [pa.zmean]
     V_adapt = Vector{Vector{Float64}}(undef, pa.max_adapt_iter)
-    return Household(V, cpol, spol, s_dense, income, u, g, K, C, r, w, Y, A, V_adapt)
+    return Household(V, cpol, spol, s_dense, income, u, g, K, C, S, excess_supply, excess_capital, r, w, Y, A, V_adapt)
 end
 
 ### ITERATION FUNCTIONS
 function VFI!(hh::Household, G::Grid, pa::Params)
 
-    Az, const_z = FD_operator(G, μ = pa.θz .* (pa.zmean .- G.value[:, G.names_dict[:z]]), σ = pa.σz * ones(G.J), dims = 2)
+    Az, const_z = FD_operator(G, μ = pa.θz .* (pa.zmean .- G.value[:, G.names_dict[:z]]), σ = pa.σz * ones(G.J), dims = 2);
 
     for iter = 1:pa.maxit
         HJB!(hh, G, pa)
@@ -116,14 +122,12 @@ function VFI!(hh::Household, G::Grid, pa::Params)
 
         dist = maximum(abs.(V_change))
         if dist < pa.crit
-            # println(" Iteration = ", iter, " Max Diff = ", dist)
-            # println(" Converge!")
             break
         elseif !isreal(hh.V)
             println("Complex values in VFI: terminating process.")
             break
-        elseif iter == pa.maxit && dist[iter] >= dist
-            error("Did not converge within $it rounds")
+        elseif iter == pa.maxit
+            println("Did not converge within $iter rounds. Remaining Gap: $dist")
 	end
     end
 end
@@ -194,59 +198,54 @@ function setup_p()
     return Problem(pa, hh, G, G_dense)
 end
 
-function stationary!(p::Problem) # p as parameter, has to be the second position
+function stationary!(K, p::Problem) # p as parameter, has to be the second position
     (; pa, hh, G, G_dense) = p;
     BC = Vector{Dict}(undef, G.d)
 
-    for iter = 1:pa.maxit
-        # println("iter: ", iter)
-        Y = hh.K^(pa.α) * pa.L^(1-pa.α)
-        hh.r = pa.α * Y / hh.K - pa.δ
-        hh.w = (1-pa.α) * Y / pa.L
-        hh.income = hh.r .* G.value[:, G.names_dict[:k]] .+ hh.w .* G.value[:, G.names_dict[:z]]
+    Y = K^(pa.α) * pa.L^(1-pa.α)
+    hh.r = pa.α * Y / K - pa.δ
+    hh.w = (1-pa.α) * Y / pa.L
+    hh.income = hh.r .* G.value[:, G.names_dict[:k]] .+ hh.w .* G.value[:, G.names_dict[:z]]
 
-        # State-constrained boundary conditions
-        left_bound = pa.u1.(hh.income)
-        right_bound = pa.u1.(hh.income)
-        BC[1] = Dict(
-            :lefttype => :VNB, :righttype => :VNF,
-            :leftfn => (x -> sparse_project(G, x, left_bound)),
-            :rightfn => (x -> sparse_project(G, x, right_bound))
-        )
-        BC[2] = Dict(
-            :lefttype => :zero, :righttype => :zero
-        )
-        gen_FD!(G, BC)
-        gen_FD!(G_dense, BC)
+    # State-constrained boundary conditions
+    left_bound = pa.u1.(hh.income)
+    right_bound = pa.u1.(hh.income)
+    BC[1] = Dict(
+        :lefttype => :VNB, :righttype => :VNF,
+        :leftfn => (x -> sparse_project(G, x, left_bound)),
+        :rightfn => (x -> sparse_project(G, x, right_bound))
+    )
+    BC[2] = Dict(
+        :lefttype => :zero, :righttype => :zero
+    )
+    gen_FD!(G, BC)
+    gen_FD!(G_dense, BC)
 
-        # VALUE FUNCTION ITERATION
-        VFI!(hh, G, pa)
-        # KOLMOGOROV FORWARD
-        hh.s_dense = G.BH_dense * hh.spol
-        KF!(hh, G_dense, pa)
-        # MARKET CLEARING
-        k = G_dense.value[:, G.names_dict[:k]]
-        Knew = sum(k .* hh.g .* G_dense.dx[1] .* G_dense.dx[2])
-        # UPDATE INTEREST RATE
-        if abs(hh.K - Knew) < pa.crit
-            break
-        elseif iter == pa.maxit
-            println("Max iteration reached")
-        else
-            hh.K = 0.99*hh.K + (1-0.99)*Knew
-        end
-    end
-    # return K - hh.K
+    # VALUE FUNCTION ITERATION
+    VFI!(hh, G, pa)
+    # KOLMOGOROV FORWARD
+    hh.s_dense = G.BH_dense * hh.spol
+    KF!(hh, G_dense, pa)
+    # MARKET CLEARING
+    k = G_dense.value[:, G.names_dict[:k]]
+    hh.K = sum(k .* hh.g .* G_dense.dx[1] .* G_dense.dx[2])
+    hh.C = sum(G.BH_dense * hh.cpol .* hh.g .* G_dense.dx[1] .* G_dense.dx[2])
+    hh.S = sum(G.BH_dense * hh.spol .* hh.g .* G_dense.dx[1] .* G_dense.dx[2])
+    hh.excess_supply = Y - hh.C - pa.δ * hh.K
+    hh.excess_capital = K - hh.K
+
+    return hh.excess_capital
 end
 
 function main!(p::Problem)
     (; pa, hh, G, G_dense) = p;
+    probN = IntervalNonlinearProblem(stationary!, u0, p)
 
     for iter = 1:pa.max_adapt_iter
         println(" MainIteration = ", iter)
         # probN = NonlinearProblem(NonlinearFunction(stationary!), hh.K, p)
-        # K = solve(probN, SimpleNewtonRaphson())
-        stationary!(p)
+        hh.K = solve(probN, Bisection()).u
+        println("Stationary Equilibrium: (r = $(hh.r), K = $(hh.K)), markets(S = $(hh.S), Y-C-I = $(hh.excess_supply), Kgap = $(hh.excess_capital))")
         hh.V_adapt[iter] = hh.V
         G.G_adapt[iter] = G.grid
         adapt_grid!( # generate BH_adapt projection and update grid
@@ -267,6 +266,5 @@ end
 
 u0 = (5.0, 8.0)
 p = setup_p();
-stationary!(p)
-@time main!(p) # 22s, still 2.5x slower than original matlab code
+main!(p) # 22s, still 2.5x slower than original matlab code
 # show(stdout, "text/plain", VaF)
