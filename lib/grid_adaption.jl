@@ -66,7 +66,7 @@ function adapt_grid!(G::Grid, f; # f is an array of nodal values for function, c
 
     # Report summary of results
     println("Mean level of abs(aH): $(mean(abs.(aH[:]))). Maximum level of grid: $(maximum(lvl_new))")
-    println("Nodes coarsened: $(G.stats_dict[:coarsened]), children added: $(G.stats_dict[:n_new_points]), parents added: $(G.stats_dict[:n_new_parents]). Net change: $(G.stats_dict[:n_change]), blacklisted: $(size(G.blacklist, 1))")
+    println("Nodes coarsened: $(G.stats_dict[:coarsened]), children added: $(G.stats_dict[:n_new_points]), parents added: $(G.stats_dict[:n_new_parents]). Net change: $(G.stats_dict[:n_old]) -> $(G.stats_dict[:n_new]) => $(G.stats_dict[:n_change]), blacklisted: $(size(G.blacklist, 1))")
 end
 
 function add_points(grid::Matrix{Float64}, levels::Matrix{Int64}, add_idx::Vector{Int64}; dims = nothing)

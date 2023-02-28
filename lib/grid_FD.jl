@@ -346,6 +346,7 @@ function FD_operator(G::Grid; μ, σ, dims, BC_name = :Main) # build matrix A
     for i = 1:length(dims)
         k = dims[i]
         if any(!iszero, σ[:, i])
+            @assert in(k, G.dxx_dims) "Nonzero SIGMA detected in dimension $k, dxx operator in dimension $k must be enabled."
             if G.sparse
                 ijs = vec_x_spijs(1/2 .* σ[:, i] .^ 2, G.DSijs_dict[Symbol(BC_name, :D2)][k])
                 mat_diffusion = sparse(ijs[:, 1], ijs[:, 2], ijs[:, 3], G.J, G.J)
