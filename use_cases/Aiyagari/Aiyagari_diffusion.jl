@@ -122,6 +122,7 @@ function VFI!(hh::Household, G::Grid, pa::Params)
 
         dist = maximum(abs.(V_change))
         if dist < pa.crit
+            println("VFI iteration: ", iter)
             break
         elseif !isreal(hh.V)
             println("Complex values in VFI: terminating process.")
