@@ -1,5 +1,5 @@
 using LinearAlgebra, SparseArrays
-using Combinatorics, NonlinearSolve, LinearSolve
+using Combinatorics, NLsolve, LinearSolve
 
 include("../../lib/grid_setup.jl")
 include("../../lib/grid_hierarchical.jl")
@@ -245,17 +245,16 @@ function stationary!(r, p::Problem) # p as parameter, has to be the second posit
     return hh.B
 end
 
-function main!(p::Problem, u0)
+function main!(p::Problem)
 
-    probN = IntervalNonlinearProblem(stationary!, u0, p)
     (; pa, hh, G, G_dense) = p;
 
     for iter = 1:pa.max_adapt_iter
         println(" MainIteration = ", iter)
-        # stationary!(hh, G, G_dense, pa, rmin, rmax)
-        # probN = NonlinearProblem{false}(NonlinearFunction{false}(stationary!), hh.r, p)
-        hh.r = solve(probN, Bisection()).u
-        # stationary!(r.u, p)
+        hh.r = nlsolve(f!, [hh.r], method = :trust_region).zero[1]
+        hh.B = stationary!(hh.r, p)
+
+        println("Stationary Equilibrium: (r = $(hh.r), B = $(hh.B))")
         hh.V_adapt[iter] = hh.V
         G.G_adapt[iter] = G.grid
         adapt_grid!( # generate BH_adapt projection and update grid
@@ -274,7 +273,11 @@ function main!(p::Problem, u0)
     end
 end
 
-u0 = (0.008, 0.02)
 p = setup_p();
-@time main!(p, u0) # 22s, still 2.5x slower than original matlab code
+
+function f!(F, x)
+    F[1] = stationary!(x[1], p) # excess_bond
+end
+
+@time main!(p) # 17s for the first run (compiling time included), still 2x slower than original matlab code
 # show(stdout, "text/plain", setdiff(G.G_adapt[4], G.G_adapt[5]))
