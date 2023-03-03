@@ -1,5 +1,5 @@
 using LinearAlgebra, SparseArrays
-using Combinatorics, NonlinearSolve, LinearSolve
+using Combinatorics, NLsolve, LinearSolve
 
 include("../../lib/grid_setup.jl")
 include("../../lib/grid_hierarchical.jl")
@@ -92,7 +92,7 @@ function Household(pa::Params)
     r = pa.ρ/2
     w = 0.75
     Y = pa.L
-    K = 6.0
+    K = 5.5
     C = 1.0
     S = 0.0
     excess_supply = 0.0
@@ -240,12 +240,11 @@ end
 
 function main!(p::Problem)
     (; pa, hh, G, G_dense) = p;
-    probN = IntervalNonlinearProblem(stationary!, u0, p)
 
     for iter = 1:pa.max_adapt_iter
         println(" MainIteration = ", iter)
-        # probN = NonlinearProblem(NonlinearFunction(stationary!), hh.K, p)
-        hh.K = solve(probN, Bisection()).u
+        hh.K = nlsolve(f!, [hh.K], method = :trust_region).zero[1]
+        hh.excess_capital = stationary!(hh.K, p)
         println("Stationary Equilibrium: (r = $(hh.r), K = $(hh.K)), markets(S = $(hh.S), Y-C-I = $(hh.excess_supply), Kgap = $(hh.excess_capital))")
         hh.V_adapt[iter] = hh.V
         G.G_adapt[iter] = G.grid
@@ -265,7 +264,11 @@ function main!(p::Problem)
     end
 end
 
-u0 = (5.0, 8.0)
 p = setup_p();
+
+function f!(F, x)
+    F[1] = stationary!(x[1], p) # excess_capital
+end
+
 main!(p) # 22s, still 2.5x slower than original matlab code
 # show(stdout, "text/plain", VaF)

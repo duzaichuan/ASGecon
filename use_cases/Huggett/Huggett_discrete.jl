@@ -1,5 +1,5 @@
 using LinearAlgebra, SparseArrays
-using Combinatorics, NonlinearSolve, LinearSolve
+using Combinatorics, NLsolve, LinearSolve
 
 include("../../lib/grid_setup.jl")
 include("../../lib/grid_hierarchical.jl")
@@ -116,7 +116,9 @@ function VFI!(hh::Household, G::Grid, pa::Params)
 
         B = (1/pa.Δ + pa.ρ) .* sparse(I, 2*G.J, 2*G.J) .- hh.A
         b = hh.u[:] .+ hh.V[:] ./ pa.Δ
-        V_new = B\b
+        probB = LinearProblem(B, b)
+        V_new = solve(probB).u # KLUFactorization() < 0.004s
+        # V_new = B\b
         V_change = V_new .- hh.V[:]
         hh.V .= reshape(V_new, G.J, length(pa.discrete_types))
 
@@ -286,15 +288,15 @@ function stationary!(r, p::Problem) # p as parameter, has to be the second posit
     return B
 end
 
-function main!(p::Problem, u0)
+function main!(p::Problem)
 
-    probN = IntervalNonlinearProblem(stationary!, u0, p)
     (; pa, hh, G, G_dense) = p
 
     for iter = 1:pa.max_adapt_iter
         println(" MainIteration = ", iter)
-        # stationary!(hh, G, G_dense, pa, rmin, rmax)
-        r = solve(probN, Bisection())
+        hh.r = nlsolve(f!, [hh.r], method = :trust_region).zero[1]
+        hh.B = stationary!(hh.r, p)
+        println("Stationary Equilibrium: (r = $(hh.r), B = $(hh.B))")
         hh.V_adapt[iter] = hh.V
         G.G_adapt[iter] = G.grid
         adapt_grid!( # generate BH_adapt projection and update grid
@@ -313,6 +315,10 @@ function main!(p::Problem, u0)
     end
 end
 
-u0 = (0.001, 0.018)
 p = setup_p();
-@time main!(p, u0) # 6s
+
+function f!(F, x)
+    F[1] = stationary!(x[1], p) # excess bond
+end
+
+@time main!(p)
