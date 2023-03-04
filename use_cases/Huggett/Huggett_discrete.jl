@@ -294,7 +294,7 @@ function main!(p::Problem)
 
     for iter = 1:pa.max_adapt_iter
         println(" MainIteration = ", iter)
-        hh.r = nlsolve(f!, [hh.r], method = :trust_region).zero[1]
+        hh.r = nlsolve(f!, [hh.r], ftol = 1e-12).zero[1]
         hh.B = stationary!(hh.r, p)
         println("Stationary Equilibrium: (r = $(hh.r), B = $(hh.B))")
         hh.V_adapt[iter] = hh.V

@@ -209,6 +209,8 @@ function stationary!(r, p::Problem) # p as parameter, has to be the second posit
         BC = Vector{Dict}(undef, G.d)
         BC[1] = Dict(
             :lefttype => :VNB, :righttype => :VNF,
+            # Since boundary points to add are not located in the grid points of
+            # left (right) bounds, we need interpolation
             :leftfn => (x -> sparse_project(G, x, left_bound)),
             :rightfn => (x -> sparse_project(G, x, right_bound))
         )
@@ -251,7 +253,7 @@ function main!(p::Problem)
 
     for iter = 1:pa.max_adapt_iter
         println(" MainIteration = ", iter)
-        hh.r = nlsolve(f!, [hh.r], method = :trust_region).zero[1]
+        hh.r = nlsolve(f!, [hh.r]).zero[1]
         hh.B = stationary!(hh.r, p)
 
         println("Stationary Equilibrium: (r = $(hh.r), B = $(hh.B))")

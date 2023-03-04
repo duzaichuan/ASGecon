@@ -122,7 +122,7 @@ function VFI!(hh::Household, G::Grid, pa::Params)
 
         dist = maximum(abs.(V_change))
         if dist < pa.crit
-            println("VFI iteration: ", iter)
+            # println("VFI iteration: ", iter)
             break
         elseif !isreal(hh.V)
             println("Complex values in VFI: terminating process.")
@@ -243,7 +243,7 @@ function main!(p::Problem)
 
     for iter = 1:pa.max_adapt_iter
         println(" MainIteration = ", iter)
-        hh.K = nlsolve(f!, [hh.K], method = :trust_region).zero[1]
+        hh.K = nlsolve(f!, [hh.K]).zero[1]
         hh.excess_capital = stationary!(hh.K, p)
         println("Stationary Equilibrium: (r = $(hh.r), K = $(hh.K)), markets(S = $(hh.S), Y-C-I = $(hh.excess_supply), Kgap = $(hh.excess_capital))")
         hh.V_adapt[iter] = hh.V
@@ -270,5 +270,5 @@ function f!(F, x)
     F[1] = stationary!(x[1], p) # excess_capital
 end
 
-main!(p) # 22s, still 2.5x slower than original matlab code
+@time main!(p)
 # show(stdout, "text/plain", VaF)
