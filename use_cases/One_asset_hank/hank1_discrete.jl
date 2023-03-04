@@ -6,6 +6,7 @@ include("../../lib/grid_hierarchical.jl")
 include("../../lib/grid_projection.jl")
 include("../../lib/grid_FD.jl")
 include("../../lib/grid_adaption.jl")
+include("../../lib/utils/newton_nonlin.jl")
 
 #!! when itr is empty in reduce(vcat,[]), errors appear
 @kwdef struct Params # Huggett_discrete
@@ -95,7 +96,7 @@ mutable struct Household
     excess_bonds::Float64
     excess_saving::Float64
     excess_supply::Float64
-    excess_capital::Float64
+    excess_labor::Float64
     r::Float64
     τ::Float64
     w::Float64
@@ -212,7 +213,7 @@ function HJB!(hh::Household, G::Grid, pa::Params)
     @assert all(hh.spol[G.grid[:, 1] .== 0, :] .>= 0)
     @assert all(abs.(hh.lpol .- ((1 - pa.τ_lab) * hh.w * pa.zz .* hh.cpol .^(-pa.γ)).^(1/pa.η)) .< 1e-8)
     @assert all(abs.(cF[G.grid[:, 1] .== 1, :] .- hh.c_right) .< 1e-8)
-    @assert all(abs.(cF[G.grid[:, 1] .== 0, :] .- hh.c_left) .< 1e-8)
+    @assert all(abs.(cB[G.grid[:, 1] .== 0, :] .- hh.c_left) .< 1e-8)
 
 end
 
@@ -235,12 +236,14 @@ function KF!(hh::Household, G_dense::Grid, pa::Params) # use G_dense, c.f. HJB!
     AT1[i_fix, :] = row
 
     gg = AT1 \ b
-    g_sum = sum(gg) * G_dense.dx[1] * G_dense.dx[2]
+    g_sum = sum(gg) * G_dense.dx
     gg ./= g_sum
     g1 = reshape(gg, G_dense.J, 2)
 
     # KF 2
     g = zeros(G_dense.J, length(pa.discrete_types))
+    a = G_dense.value[:, G_dense.names_dict[:a]]
+    da = G_dense.range[G_dense.names_dict[:a]] * minimum(G_dense.h[:, G_dense.names_dict[:a]])
     g[a .== pa.amin, :] .= 1/length(pa.zz) / da
     for n = 1:pa.maxit_KF
         B = 1/pa.Δ_KF .* sparse(I, length(pa.discrete_types)*G_dense.J, length(pa.discrete_types)*G_dense.J) .- AT
@@ -311,8 +314,8 @@ function stationary!(x::Vector{Float64}, p::Problem) # p as parameter, has to be
     hh.c0 = newton_nonlin(f, f_prime, c_guess, G.value[:, G.names_dict[:a]], pa.crit)
 
     # State-constrained boundary conditions
-    left_bound = pa.u1.(c_left)
-    right_bound = pa.u1.(c_right)
+    left_bound = pa.u1.(hh.c_left)
+    right_bound = pa.u1.(hh.c_right)
     BC = Vector{Dict}(undef, G.d)
     for j = 1:length(pa.discrete_types) # [:y1, :y2]
         BC[1] = Dict(
@@ -335,12 +338,12 @@ function stationary!(x::Vector{Float64}, p::Problem) # p as parameter, has to be
     # MARKET CLEARING
     a = G_dense.value[:, G.names_dict[:a]]
     hh.B = sum(a .* hh.g .* prod(G_dense.dx))
-    hh.N = sum((G.BH_dense * (pa.zz .* hh.lpol)) .* hh.g .* prod(G_dense.dx))
+    N = sum((G.BH_dense * (pa.zz .* hh.lpol)) .* hh.g .* prod(G_dense.dx))
     hh.C = sum(G.BH_dense * hh.cpol .* hh.g .* prod(G_dense.dx))
     hh.excess_saving = sum(G.BH_dense * hh.spol .* hh.g .* prod(G_dense.dx))
     hh.excess_bonds = hh.B - pa.gov_bond_supply
-    hh.excess_supply = Y - C
-    hh.excess_labor = N - hh.N
+    hh.excess_supply = hh.Y - hh.C
+    hh.excess_labor = hh.N - N
 
     return [hh.excess_bonds, hh.excess_supply]
 end
