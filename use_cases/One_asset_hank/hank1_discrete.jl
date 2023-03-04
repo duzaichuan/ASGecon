@@ -345,7 +345,7 @@ function stationary!(x::Vector{Float64}, p::Problem) # p as parameter, has to be
     hh.excess_supply = hh.Y - hh.C
     hh.excess_labor = hh.N - N
 
-    return [hh.excess_bonds, hh.excess_supply]
+    return hh.excess_bonds, hh.excess_supply
 end
 
 function main!(p::Problem)
@@ -353,11 +353,11 @@ function main!(p::Problem)
 
     for iter = 1:pa.max_adapt_iter
         println(" MainIteration = ", iter)
-        x = nlsolve(f!, [hh.r, hh.Y])
-        hh.r = x.zero[1]
-        hh.Y = x.zero[2]
-        hh.B = stationary!([hh.r, hh.Y], p)
-        println("Stationary Equilibrium: (r = $(hh.r), B = $(hh.B))")
+        x = nlsolve(f!, [hh.r, hh.Y]).zero
+        hh.r = x[1]
+        hh.Y = x[2]
+        hh.B, hh.excess_supply = stationary!([hh.r, hh.Y], p)
+        println("Stationary Equilibrium: (r = $(hh.r), Y = $(hh.Y))")
         hh.V_adapt[iter] = hh.V
         G.G_adapt[iter] = G.grid
         adapt_grid!( # generate BH_adapt projection and update grid
@@ -379,8 +379,7 @@ end
 p = setup_p();
 
 function f!(F, x)
-    F[1] = stationary!([x[1], x[2]], p)
+    F[1], F[2] = stationary!([x[1], x[2]], p)
 end
 
-main!(p) # 22s, still 2.5x slower than original matlab code
-# show(stdout, "text/plain", VaF)
+@time main!(p)
