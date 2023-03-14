@@ -1,11 +1,8 @@
-using LinearAlgebra, SparseArrays
-using Combinatorics, NLsolve, LinearSolve
-
-include("../../lib/grid_setup.jl")
-include("../../lib/grid_hierarchical.jl")
-include("../../lib/grid_projection.jl")
-include("../../lib/grid_FD.jl")
-include("../../lib/grid_adaption.jl")
+### LOAD MODULE
+using LinearSolve: LinearProblem, solve
+using NLsolve: nlsolve
+include("../../lib/MacroASG.jl")
+using .MacroASG
 
 @kwdef struct Params # Huggett_discrete
     # Grid construction

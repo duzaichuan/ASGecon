@@ -1,5 +1,3 @@
-using LinearAlgebra, SparseArrays, Combinatorics
-
 mutable struct Grid
     const d::Int64 # total dimension
     const min::Matrix{Float64}

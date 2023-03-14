@@ -1,15 +1,13 @@
-using LinearAlgebra, SparseArrays
-using Combinatorics, NLsolve, LinearSolve
-
-include("../../lib/grid_setup.jl")
-include("../../lib/grid_hierarchical.jl")
-include("../../lib/grid_projection.jl")
-include("../../lib/grid_FD.jl")
-include("../../lib/grid_adaption.jl")
-include("../../lib/utils/newton_nonlin.jl")
+### LOAD MODULE
+using LinearSolve: LinearProblem, solve
+using NLsolve: nlsolve
+include("../../lib/MacroASG.jl")
+using .MacroASG
 
 #!! when itr is empty in reduce(vcat,[]), errors appear
-@kwdef struct Params # Huggett_discrete
+
+### CONSTANT PARAMETERS
+@kwdef struct Params
     # Grid construction
     l::Int64             = 5
     surplus::Vector{Int64} = [0]
@@ -72,6 +70,8 @@ include("../../lib/utils/newton_nonlin.jl")
     dxy_dims::Vector{Int64} = Int[]
     names::Vector{Symbol} = [:a]
     named_dims::Vector{Int64} = [1]
+
+    # Transition dynamics
 end
 
 ### HOUSEHOLD VARIABLES
@@ -322,8 +322,10 @@ function stationary!(x::Vector{Float64}, p::Problem) # p as parameter, has to be
             :lefttype => :VNB, :righttype => :VNF,
             # Since boundary points to add in gen_FD are not located in the grid
             # points of left (right) bounds, we need interpolation
-            :leftfn => (points -> sparse_project(G, points, left_bound[:, j])),
-            :rightfn => (points -> sparse_project(G, points, right_bound[:, j]))
+            # :leftfn => (points -> sparse_project(G, points, left_bound[:, j])),
+            # :rightfn => (points -> sparse_project(G, points, right_bound[:, j]))
+            :leftfn => (points ->  left_bound[1, j] * ones(size(points, 1))),
+            :rightfn => (points -> right_bound[1, j] * ones(size(points, 1)))
         )
         gen_FD!(G, BC, name = pa.discrete_types[j])
         gen_FD!(G_dense, BC, name = pa.discrete_types[j])
@@ -359,7 +361,7 @@ function main!(p::Problem)
         hh.B, hh.excess_supply = stationary!([hh.r, hh.Y], p)
         println("Stationary Equilibrium: (r = $(hh.r), Y = $(hh.Y))")
         hh.V_adapt[iter] = hh.V
-        G.G_adapt[iter] = G.grid
+        G.G_adapt[iter] = G.value
         adapt_grid!( # generate BH_adapt projection and update grid
             G, hh.V,
             AddRule = :tol, # Expand nodes with hierarchical coefficient greater than 'AddTol'
@@ -383,3 +385,10 @@ function f!(F, x)
 end
 
 @time main!(p)
+
+using Plots
+n=2
+a = p.G.G_adapt[n][:, p.G.names_dict[:a]]
+pl = scatter(a, p.hh.V_adapt[n][:, 1], label = "Vu", title = "Value Funs", xlabel = "Wealth a")
+scatter!(pl, a, p.hh.V_adapt[n][:, 2], label = "Ve")
+savefig(pl, "output/grid_adaptation$(n-1).png")
